@@ -79,14 +79,16 @@ module Langchain::Vectorsearch
     # Search for similar texts in the index
     # @param query [String] The text to search for
     # @param k [Integer] The number of top results to return
+    # @param score_threshold [Float] The minimum similarity score (lower distance) to include in results
     # @return [Array<Hash>] The results of the search
     # TODO - drop the named "query:" param so it is the same interface as #ask?
-    def similarity_search(query:, k: 4)
+    def similarity_search(query:, k: 4, score_threshold: nil)
       embedding = llm.embed(text: query).embedding
 
       similarity_search_by_vector(
         embedding: embedding,
-        k: k
+        k: k,
+        score_threshold: score_threshold
       )
     end
 
@@ -94,23 +96,33 @@ module Langchain::Vectorsearch
     # You must generate your own vector using the same LLM that generated the embeddings stored in the Vectorsearch DB.
     # @param embedding [Array<Float>] The vector to search for
     # @param k [Integer] The number of top results to return
+    # @param score_threshold [Float] The minimum similarity score (lower distance) to include in results
     # @return [Array<Hash>] The results of the search
     # TODO - drop the named "embedding:" param so it is the same interface as #ask?
-    def similarity_search_by_vector(embedding:, k: 4)
-      model
-        .nearest_neighbors(:embedding, embedding, distance: operator)
-        .limit(k)
+    def similarity_search_by_vector(embedding:, k: 4, score_threshold: nil)
+      query = model.nearest_neighbors(:embedding, embedding, distance: operator)
+
+      if score_threshold
+        # Fetch more results than needed and filter in Ruby to avoid depending on virtual columns
+        candidates = query.limit(k + 5)
+        filtered = candidates.select { |r| r.neighbor_distance <= score_threshold }.first(k)
+        ids = filtered.map(&:id)
+        model.where(id: ids).order(Arel.sql("array_position(ARRAY#{ids.inspect}, id)"))
+      else
+        query.limit(k)
+      end
     end
 
     # Ask a question and return the answer
     # @param question [String] The question to ask
     # @param k [Integer] The number of results to have in context
+    # @param score_threshold [Float] The minimum similarity score to include in results
     # @yield [String] Stream responses back one String at a time
     # @return [String] The answer to the question
-    def ask(question:, k: 4, &block)
+    def ask(question:, k: 4, score_threshold: nil, &block)
       # Noisy as the embedding column has a lot of data
       ActiveRecord::Base.logger.silence do
-        search_results = similarity_search(query: question, k: k)
+        search_results = similarity_search(query: question, k: k, score_threshold: score_threshold)
 
         context = search_results.map do |result|
           result.as_vector

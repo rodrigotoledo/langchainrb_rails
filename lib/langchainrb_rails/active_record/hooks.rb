@@ -105,11 +105,13 @@ module LangchainrbRails
         #
         # @param query [String] The query to search for
         # @param k [Integer] The number of results to return
+        # @param score_threshold [Float] The minimum similarity score to include in results
         # @return [ActiveRecord::Relation] The ActiveRecord relation
-        def similarity_search(query, k: 1)
+        def similarity_search(query, k: 1, score_threshold: nil)
           records = class_variable_get(:@@provider).similarity_search(
             query: query,
-            k: k
+            k: k,
+            score_threshold: score_threshold
           )
 
           return records if LangchainrbRails.config.vectorsearch.is_a?(Langchain::Vectorsearch::Pgvector)
@@ -123,13 +125,15 @@ module LangchainrbRails
         #
         # @param question [String] The question to ask
         # @param k [Integer] The number of results to have in context
+        # @param score_threshold [Float] The minimum similarity score to include in results
         # @yield [String] Stream responses back one String at a time
         # @return [String] The answer to the question
         # standard:disable Style/ArgumentsForwarding
-        def ask(question, k: 4, &block)
+        def ask(question, k: 4, score_threshold: nil, &block)
           class_variable_get(:@@provider).ask(
             question: question,
             k: k,
+            score_threshold: score_threshold,
             &block
           ).chat_completion
         end
