@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    langchainrb_rails (0.1.12)
+    langchainrb_rails (0.1.13)
       langchainrb (>= 0.19)
 
 GEM
